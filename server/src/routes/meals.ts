@@ -21,16 +21,16 @@ async function autoResolveItems(items: any[]): Promise<any[]> {
       product = await prisma.product.findUnique({ where: { barcode: item.barcode } });
     }
     if (!product && item.name) {
-      const searchName = item.name.trim();
+      const searchName = item.name.trim().toLowerCase();
       console.log('autoResolve: searching for', JSON.stringify(searchName));
-      product = await prisma.product.findFirst({
-        where: {
-          OR: [
-            { name: { contains: searchName } },
-            { nameRu: { contains: searchName } }
-          ]
-        }
-      });
+      // Fallback: client-side поиск по всем продуктам
+      if (searchName.length >= 2) {
+        const all = await prisma.product.findMany({ take: 200 });
+        product = all.find(p =>
+          (p.nameRu || '').toLowerCase().includes(searchName) ||
+          p.name.toLowerCase().includes(searchName)
+        ) || null;
+      }
       console.log('autoResolve: found', product ? product.nameRu : 'NOT FOUND');
     }
 
@@ -225,16 +225,12 @@ mealsRouter.delete('/:id', authenticate, async (req: AuthRequest, res: Response)
 mealsRouter.get('/search', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const query = (req.query.q as string || '').toLowerCase();
-    const products = await prisma.product.findMany({
-      where: {
-        OR: [
-          { name: { contains: query } },
-          { nameRu: { contains: query } }
-        ]
-      },
-      take: 20
-    });
-    res.json(products);
+    const all = await prisma.product.findMany({ take: 200 });
+    const filtered = all.filter(p =>
+      (p.nameRu || '').toLowerCase().includes(query) ||
+      p.name.toLowerCase().includes(query)
+    ).slice(0, 20);
+    res.json(filtered);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
