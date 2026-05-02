@@ -1,24 +1,23 @@
-# Dockerfile для Render (сервер)
+# Dockerfile for Render
 FROM node:20-alpine
+
+# Install openssl for Prisma
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 
-# Устанавливаем openssl для Prisma
-RUN apk add --no-cache openssl
-
-# Копируем зависимости
-COPY server/package*.json ./
+# Copy server dependencies
+COPY server/package.json server/package-lock.json ./
 RUN npm ci
 
-# Копируем исходники
-COPY server/ .
-
-# Генерируем Prisma client + компилируем TS
+# Copy Prisma schema
+COPY server/prisma ./prisma/
 RUN npx prisma generate
+
+# Copy server source
+COPY server/tsconfig.json server/src ./src/
 RUN npm run build
 
-# Порт
 EXPOSE 4000
 
-# Запуск
 CMD ["node", "dist/index.js"]
