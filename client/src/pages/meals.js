@@ -153,8 +153,43 @@
         searchTimer = setTimeout(async () => {
           const q = div.querySelector('.item-name').value.trim();
           if (q.length < 2) return;
-          try { await window.HT.apiGet('/meals/search?q=' + encodeURIComponent(q)); } catch {}
+          try {
+            const products = await window.HT.apiGet('/meals/search?q=' + encodeURIComponent(q));
+            let hintBox = div.querySelector('.hint-box');
+            if (!hintBox) {
+              hintBox = document.createElement('div');
+              hintBox.className = 'hint-box';
+              hintBox.style.cssText = 'background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);max-height:150px;overflow-y:auto;font-size:13px;margin-top:2px';
+              div.appendChild(hintBox);
+            }
+            if (products.length === 0) { hintBox.innerHTML = '<div class="text-muted" style="padding:6px 8px">Ничего не найдено</div>'; return; }
+            hintBox.innerHTML = products.map(p =>
+              '<div style="padding:6px 8px;cursor:pointer;border-bottom:1px solid var(--border)" data-name="' +
+              (p.nameRu || p.name) + '" data-kcal="' + p.caloriesPer100g + '" data-prot="' + p.proteinPer100g +
+              '" data-fat="' + p.fatPer100g + '" data-carbs="' + p.carbsPer100g + '">' +
+              (p.nameRu || p.name) + ' — ' + Math.round(p.caloriesPer100g) + ' ккал/100г</div>'
+            ).join('');
+            hintBox.querySelectorAll('[data-name]').forEach(el => {
+              el.addEventListener('click', () => {
+                div.querySelector('.item-name').value = el.dataset.name;
+                hintBox.remove();
+              });
+            });
+          } catch {}
         }, 400);
+      });
+
+      // Закрыть подсказки по клику вне
+      div.querySelector('.item-name').addEventListener('blur', () => {
+        setTimeout(() => { const h = div.querySelector('.hint-box'); if (h) h.remove(); }, 200);
+      });
+      div.querySelector('.item-name').addEventListener('focus', () => {
+        if (div.querySelector('.hint-box')) return;
+        const q = div.querySelector('.item-name').value.trim();
+        if (q.length < 2) return;
+        // триггернуть поиск заново
+        const evt = new Event('input');
+        div.querySelector('.item-name').dispatchEvent(evt);
       });
 
       div.querySelector('.item-remove').addEventListener('click', () => div.remove());
