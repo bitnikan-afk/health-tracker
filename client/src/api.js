@@ -1,7 +1,7 @@
 // HTTP-клиент — инициализируем окно.HT сразу
 (function() {
   window.HT = window.HT || {};
-  const API = '/api/v1';
+  const API = 'https://health-tracker-api-1.onrender.com/api/v1';
 
   window.HT.api = async function(path, options) {
     options = options || {};
