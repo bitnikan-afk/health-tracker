@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -157,8 +157,3 @@ model ChatMessage {
   @@index([userId, createdAt])
 }
 
-model Migration {
-  id    String @id
-  name  String
-  runAt DateTime @default(now())
-}
