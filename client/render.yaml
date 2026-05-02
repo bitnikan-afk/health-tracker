@@ -1,0 +1,19 @@
+# Render Static Site — настройки для клиента (SPA)
+# Самый важный момент: SPA роутинг (все пути → index.html)
+
+routes:
+  - type: rewrite
+    source: /api/*
+    destination: https://health-tracker-api.onrender.com/api/:splat
+  - type: rewrite
+    source: /socket.io/*
+    destination: https://health-tracker-api.onrender.com/socket.io/:splat
+  - type: rewrite
+    source: /*
+    destination: /index.html
+
+headers:
+  - path: /*
+    headers:
+      - key: Cache-Control
+        value: no-cache

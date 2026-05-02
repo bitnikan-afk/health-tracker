@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password      String
+  name          String
+  birthDate     DateTime
+  height        Int
+  weight        Float
+  targetWeight  Float?
+  activityLevel String   @default("sedentary") // sedentary | light | moderate | active
+  goal          String   @default("lose_weight") // lose_weight | maintain
+  pushToken     String?  // для пуш-уведомлений
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  meals        Meal[]
+  healthMetrics HealthMetric[]
+  waterLogs    WaterLog[]
+  templates    FoodTemplate[]
+  aiAdvice     AiAdvice[]
+  dailySummaries DailySummary[]
+  chatMessages ChatMessage[]
+}
+
+model Meal {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // breakfast | lunch | dinner | snack
+  datetime  DateTime
+  totalCalories Float
+  totalProtein  Float
+  totalFat      Float
+  totalCarbs    Float
+  notes     String?
+  createdAt DateTime @default(now())
+
+  user  User       @relation(fields: [userId], references: [id])
+  items MealItem[]
+}
+
+model MealItem {
+  id       String @id @default(uuid())
+  mealId   String
+  name     String
+  barcode  String?
+  portion  Float   // вес порции в граммах
+  calories Float
+  protein  Float
+  fat      Float
+  carbs    Float
+  source   String  @default("manual") // manual | barcode | template
+
+  meal Meal @relation(fields: [mealId], references: [id])
+}
+
+model FoodTemplate {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  items     String   // JSON-строка с массивом продуктов
+  totalCalories Float
+  totalProtein  Float
+  totalFat      Float
+  totalCarbs    Float
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model HealthMetric {
+  id        String   @id @default(uuid())
+  userId    String
+  date      DateTime
+  weight    Float?
+  systolic  Int?
+  diastolic Int?
+  pulse     Int?
+  waist     Float?
+  sleepQuality Int?
+  stress    Int?
+  energy    Int?
+  morningErection Int?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model WaterLog {
+  id        String   @id @default(uuid())
+  userId    String
+  date      DateTime
+  amount    Int       // мл
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model AiAdvice {
+  id        String   @id @default(uuid())
+  userId    String
+  date      DateTime
+  text      String
+  type      String   // daily_summary | meal_tip | health_tip
+  createdAt DateTime @default(now())
+
+  user          User            @relation(fields: [userId], references: [id])
+  dailySummaries DailySummary[]
+}
+
+model DailySummary {
+  id        String   @id @default(uuid())
+  userId    String
+  date      DateTime
+  totalCalories Float
+  totalProtein  Float
+  totalFat      Float
+  totalCarbs    Float
+  totalWater    Int
+  aiAdviceId String?
+  createdAt DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  aiAdvice AiAdvice? @relation(fields: [aiAdviceId], references: [id])
+}
+
+model Product {
+  id             String  @id @default(uuid())
+  name           String  @unique
+  nameRu         String?
+  barcode        String? @unique
+  category       String? // fruits | vegetables | meat | dairy | grains | etc
+  caloriesPer100g Float
+  proteinPer100g  Float
+  fatPer100g      Float
+  carbsPer100g    Float
+  fiberPer100g    Float    @default(0)
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  userId    String
+  role      String   // user | assistant
+  content   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model Migration {
+  id    String @id
+  name  String
+  runAt DateTime @default(now())
+}
