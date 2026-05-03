@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { prisma } from '../index';
+import { prisma, getDayRange } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 export const mealsRouter = Router();
@@ -63,27 +63,6 @@ async function autoResolveItems(items: any[]): Promise<any[]> {
   }
 
   return resolved;
-}
-
-// Хелпер: получить start/end дня в часовом поясе пользователя (UTC+3 для РФ)
-function getDayRange(dateStr?: string): { start: Date; end: Date } {
-  const tzOffset = 3; // UTC+3 (МСК)
-  const now = new Date();
-  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
-  const mskNow = new Date(utcMs + tzOffset * 3600000);
-
-  let date: Date;
-  if (dateStr) {
-    date = new Date(dateStr + 'T00:00:00+03:00');
-  } else {
-    date = new Date(mskNow);
-    date.setHours(0, 0, 0, 0);
-  }
-
-  const start = new Date(date.getTime() - tzOffset * 3600000); // convert MSK start to UTC
-  const end = new Date(start.getTime() + 86400000 - 1);
-
-  return { start, end };
 }
 
 // Получить приёмы пищи за день
@@ -378,6 +357,30 @@ mealsRouter.delete('/templates/:id', authenticate, async (req: AuthRequest, res:
 
     await prisma.foodTemplate.delete({ where: { id: template.id } });
     res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Продукты (CRUD) ---
+mealsRouter.post('/products', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, nameRu, category, caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g, fiberPer100g, barcode } = req.body;
+    const product = await prisma.product.upsert({
+      where: { name },
+      update: { nameRu, category, caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g, fiberPer100g: fiberPer100g || 0, barcode },
+      create: { name, nameRu, category, caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g, fiberPer100g: fiberPer100g || 0, barcode },
+    });
+    res.status(201).json(product);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+mealsRouter.get('/products', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const products = await prisma.product.findMany({ orderBy: { nameRu: 'asc' } });
+    res.json(products);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
