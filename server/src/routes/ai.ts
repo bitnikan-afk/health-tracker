@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { prisma, JWT_SECRET } from '../index';
+import { prisma, JWT_SECRET, getDayRange, TIMEZONE_OFFSET } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 export const aiRouter = Router();
@@ -43,19 +43,16 @@ const MAX_HISTORY = 30; // сколько последних сообщений 
 
 // --- Хелпер: собрать контекст дня ---
 async function buildContext(userId: string): Promise<string> {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date();
-  endOfDay.setHours(23, 59, 59, 999);
+  const { start, end } = getDayRange();
 
   const [userData, meals, waterLogs, healthMetrics] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.meal.findMany({
-      where: { userId, datetime: { gte: startOfDay, lte: endOfDay } },
+      where: { userId, datetime: { gte: start, lte: end } },
       include: { items: true }
     }),
     prisma.waterLog.findMany({
-      where: { userId, date: { gte: startOfDay, lte: endOfDay } }
+      where: { userId, date: { gte: start, lte: end } }
     }),
     prisma.healthMetric.findFirst({
       where: { userId, date: { gte: startOfDay, lte: endOfDay } }
@@ -113,15 +110,11 @@ async function callDeepSeek(messages: { role: string; content: string }[]): Prom
 // =========================================================
 aiRouter.post('/analyze', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const date = req.body.date ? new Date(req.body.date) : new Date();
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const { start, end } = getDayRange(req.body.date as string);
 
     const [meals, healthMetrics, waterLogs] = await Promise.all([
       prisma.meal.findMany({
-        where: { userId: req.user!.userId, datetime: { gte: startOfDay, lte: endOfDay } },
+        where: { userId: req.user!.userId, datetime: { gte: start, lte: end } },
         include: { items: true }
       }),
       prisma.healthMetric.findFirst({
@@ -143,7 +136,7 @@ aiRouter.post('/analyze', authenticate, async (req: AuthRequest, res: Response) 
     const finalText = adviceText || `Анализ дня (офлайн):\n- Калории: ${meals.reduce((s, m) => s + m.totalCalories, 0)} ккал. Норма: 1700-1820 ккал\n- Белок: ${meals.reduce((s, m) => s + m.totalProtein, 0)}г. Норма: 160-178г\n- Вода: ${waterTotal}мл. Цель: 2000мл`;
 
     await prisma.aiAdvice.create({
-      data: { userId: req.user!.userId, date: startOfDay, text: finalText, type: 'daily_summary' }
+      data: { userId: req.user!.userId, date: start, text: finalText, type: 'daily_summary' }
     });
 
     res.json({ advice: finalText });
@@ -249,7 +242,6 @@ aiRouter.post('/weekly-summary', authenticate, async (req: AuthRequest, res: Res
     const userId = req.user!.userId;
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 86400000);
-    weekAgo.setHours(0, 0, 0, 0);
 
     const [userData, meals, healthMetrics, waterLogs] = await Promise.all([
       prisma.user.findUnique({ where: { id: userId } }),

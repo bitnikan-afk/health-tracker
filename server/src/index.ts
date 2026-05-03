@@ -11,6 +11,27 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 export const prisma = new PrismaClient();
 export const JWT_SECRET = process.env.JWT_SECRET || 'health-tracker-secret';
 export const PORT = parseInt(process.env.PORT || '4000', 10);
+export const TIMEZONE_OFFSET = 3; // UTC+3 (МСК)
+
+// Хелпер: получить start/end дня в UTC от MSK-даты
+// dateStr — опционально, "YYYY-MM-DD" в MSK. Если не указана — сегодня MSK.
+export function getDayRange(dateStr?: string): { start: Date; end: Date } {
+  const utcMs = Date.now() + new Date().getTimezoneOffset() * 60000;
+  const mskNow = new Date(utcMs + TIMEZONE_OFFSET * 3600000);
+
+  let date: Date;
+  if (dateStr) {
+    date = new Date(dateStr + 'T00:00:00+03:00');
+  } else {
+    date = new Date(mskNow);
+    date.setHours(0, 0, 0, 0);
+  }
+
+  const start = new Date(date.getTime());
+  const end = new Date(start.getTime() + 86400000 - 1);
+
+  return { start, end };
+}
 
 const app = express();
 const server = http.createServer(app);

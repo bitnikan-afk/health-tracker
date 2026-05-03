@@ -65,19 +65,36 @@ async function autoResolveItems(items: any[]): Promise<any[]> {
   return resolved;
 }
 
+// Хелпер: получить start/end дня в часовом поясе пользователя (UTC+3 для РФ)
+function getDayRange(dateStr?: string): { start: Date; end: Date } {
+  const tzOffset = 3; // UTC+3 (МСК)
+  const now = new Date();
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+  const mskNow = new Date(utcMs + tzOffset * 3600000);
+
+  let date: Date;
+  if (dateStr) {
+    date = new Date(dateStr + 'T00:00:00+03:00');
+  } else {
+    date = new Date(mskNow);
+    date.setHours(0, 0, 0, 0);
+  }
+
+  const start = new Date(date.getTime() - tzOffset * 3600000); // convert MSK start to UTC
+  const end = new Date(start.getTime() + 86400000 - 1);
+
+  return { start, end };
+}
+
 // Получить приёмы пищи за день
 mealsRouter.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const date = req.query.date ? new Date(req.query.date as string) : new Date();
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const { start, end } = getDayRange(req.query.date as string);
 
     const meals = await prisma.meal.findMany({
       where: {
         userId: req.user!.userId,
-        datetime: { gte: startOfDay, lte: endOfDay }
+        datetime: { gte: start, lte: end }
       },
       include: { items: true },
       orderBy: { datetime: 'asc' }

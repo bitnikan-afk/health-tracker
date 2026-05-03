@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { prisma } from '../index';
+import { prisma, getDayRange } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 export const waterRouter = Router();
@@ -7,16 +7,12 @@ export const waterRouter = Router();
 // Получить логи воды за день
 waterRouter.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const date = req.query.date ? new Date(req.query.date as string) : new Date();
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    const { start, end } = getDayRange(req.query.date as string);
 
     const logs = await prisma.waterLog.findMany({
       where: {
         userId: req.user!.userId,
-        date: { gte: startOfDay, lte: endOfDay }
+        date: { gte: start, lte: end }
       },
       orderBy: { createdAt: 'asc' }
     });
@@ -48,10 +44,7 @@ waterRouter.post('/', authenticate, async (req: AuthRequest, res: Response) => {
 // Прогресс сегодня
 waterRouter.get('/today', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    const { start, end } = getDayRange();
 
     const logs = await prisma.waterLog.findMany({
       where: { userId: req.user!.userId, date: { gte: start, lte: end } }
