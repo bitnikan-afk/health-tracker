@@ -20,4 +20,5 @@ RUN npm run build
 
 EXPOSE 4000
 
-CMD ["node", "dist/index.js"]
+# Накатить схему PostgreSQL при первом запуске
+CMD npx prisma db push --accept-data-loss 2>/dev/null; node dist/index.js
