@@ -55,7 +55,7 @@ async function buildContext(userId: string): Promise<string> {
       where: { userId, date: { gte: start, lte: end } }
     }),
     prisma.healthMetric.findFirst({
-      where: { userId, date: { gte: startOfDay, lte: endOfDay } }
+      where: { userId, date: { gte: start, lte: end } }
     }),
   ]);
 
@@ -118,10 +118,10 @@ aiRouter.post('/analyze', authenticate, async (req: AuthRequest, res: Response) 
         include: { items: true }
       }),
       prisma.healthMetric.findFirst({
-        where: { userId: req.user!.userId, date: { gte: startOfDay, lte: endOfDay } }
+        where: { userId: req.user!.userId, date: { gte: start, lte: end } }
       }),
       prisma.waterLog.findMany({
-        where: { userId: req.user!.userId, date: { gte: startOfDay, lte: endOfDay } }
+        where: { userId: req.user!.userId, date: { gte: start, lte: end } }
       }),
     ]);
 
