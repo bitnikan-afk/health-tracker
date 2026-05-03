@@ -89,6 +89,48 @@
   // Router
   window.addEventListener('hashchange', () => navigate(window.location.hash));
 
+  // Swipe navigation
+  const PAGE_ORDER = ['dashboard', 'meals', 'water', 'health', 'ai', 'profile'];
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchDeltaY = 0;
+  const SWIPE_THRESHOLD = 60;
+  const PULL_REFRESH_THRESHOLD = 100;
+
+  document.addEventListener('touchstart', e => {
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    touchDeltaY = e.changedTouches[0].screenY - touchStartY;
+  }, { passive: true });
+
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].screenX - touchStartX;
+    const dy = e.changedTouches[0].screenY - touchStartY;
+
+    // Pull-to-refresh
+    if (dy > PULL_REFRESH_THRESHOLD && window.scrollY === 0 && currentPage !== 'login') {
+      HT.showToast('Обновляю...', 'info');
+      if (HT.refreshFns && HT.refreshFns[currentPage]) {
+        HT.refreshFns[currentPage]();
+      }
+      return;
+    }
+
+    // Swipe left/right — только если движение больше по X, чем по Y
+    if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      const idx = PAGE_ORDER.indexOf(currentPage);
+      if (idx === -1) return;
+      if (dx < 0 && idx < PAGE_ORDER.length - 1) {
+        window.location.hash = '#' + PAGE_ORDER[idx + 1];
+      } else if (dx > 0 && idx > 0) {
+        window.location.hash = '#' + PAGE_ORDER[idx - 1];
+      }
+    }
+  }, { passive: true });
+
   // Boot
   document.addEventListener('DOMContentLoaded', () => {
     bindNav();
@@ -99,4 +141,14 @@
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
+
+  // Request push notification permission
+  async function requestNotifyPermission() {
+    if (!('Notification' in window)) return false;
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied') return false;
+    const result = await Notification.requestPermission();
+    return result === 'granted';
+  }
+  HT.requestNotifyPermission = requestNotifyPermission;
 })();

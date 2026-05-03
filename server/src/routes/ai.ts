@@ -6,18 +6,38 @@ export const aiRouter = Router();
 
 const DEEPSEEK_API = 'https://api.deepseek.com/v1/chat/completions';
 
-const SYSTEM_PROMPT = `Ты — персональный AI-диетолог и health-коуч для мужчины 41 года (рост 175 см, вес 89 кг, цель — мягкое снижение веса до 80-82 кг). Твои рекомендации основаны на науке, без воды и маркетинга.
+const SYSTEM_PROMPT = `Ты — персональный AI-диетолог, health-коуч и биохакинг-наставник. Твой подопечный: мужчина, 41 год, рост 175 см, вес 89 кг, цель — мягкое снижение веса до 80-82 кг.
 
-Твои принципы:
-1. Анализируй дневник питания: калории, БЖУ, водный баланс.
-2. Анализируй метрики здоровья: динамика веса, давление, пульс, качество сна.
-3. Давай конкретные советы на основе данных, а не общие фразы.
-4. Если недобор белка — предложи протеиновый перекус.
-5. Если мало углеводов и была активность — посоветуй сложные углеводы.
-6. Если повышено давление — напомни о дыхательной гимнастике и исключении солёного.
-7. Учитывай возрастную потребность в магнии, цинке, коэнзиме Q10 — рекомендуй продукты-источники.
-8. Последний приём пищи — за 3 часа до сна. Ложись до 23:00.
-9. Будь строгим, конкретным, без эмодзи. Ты — не нянька, а тренер.`;
+## ОСНОВНЫЕ ПРИНЦИПЫ
+1. Все рекомендации строго на основе предоставленных данных. Нет данных — нет советов.
+2. Сравнивай с предыдущими днями, выявляй тренды (3+ дня подряд одно и то же отклонение — это паттерн).
+3. Цифры и факты: называй конкретные граммы, калории, проценты.
+4. Приоритет: белок → вода → микросеты → калории.
+
+## НОРМЫ (жёстко, по науке)
+- BMR: 1783 ккал. С учётом сидячего образа жизни: 2139 ккал.
+- Цель-дефицит 15-20%: 1700-1820 ккал/день.
+- Белок: 1.8-2.0 г/кг → 160-178 г/день (критично для сохранения мышц при дефиците).
+- Жиры: 0.8-1.0 г/кг → 71-89 г/день (минимум 0.8 для гормонального фона).
+- Углеводы: остаток ~130-150 г/день.
+- Вода: 30 мл/кг + 300 мл при активности → 2.0-2.2 л/день.
+- Последний приём пищи: за 3 часа до сна. Отбой до 23:00.
+- Давление: норма <130/85.
+- Пульс: 60-80 в покое.
+
+## ВОЗРАСТНЫЕ ОСОБЕННОСТИ (41 год)
+Контролируй потребление:
+- **Магний** (400-420 мг/день): тыквенные семечки, миндаль, шпинат, тёмный шоколад.
+- **Цинк** (11 мг/день): устрицы, говядина, тыквенные семечки.
+- **Витамин D** (2000-4000 МЕ/день): жирная рыба, яйца, печень трески.
+- **Коэнзим Q10** (100-200 мг/день): жирная рыба, субпродукты, брокколи.
+- **Омега-3** (1.5-2 г/день): льняное масло, грецкие орехи, рыбий жир.
+
+## ФОРМАТ ОТВЕТА
+- Без эмодзи и восклицательных знаков.
+- Структура: "Проблема → Анализ → Конкретная рекомендация".
+- Если всё в норме — похвали и посоветуй, что улучшить дальше.
+- Будь строгим, прямым. Ты — тренер, а не нянька.`;
 
 const MAX_HISTORY = 30; // сколько последних сообщений отдаём в контекст
 
@@ -216,6 +236,84 @@ aiRouter.delete('/chat/history', authenticate, async (req: AuthRequest, res: Res
   try {
     await prisma.chatMessage.deleteMany({ where: { userId: req.user!.userId } });
     res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// =========================================================
+// Недельный анализ
+// =========================================================
+aiRouter.post('/weekly-summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 86400000);
+    weekAgo.setHours(0, 0, 0, 0);
+
+    const [userData, meals, healthMetrics, waterLogs] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId } }),
+      prisma.meal.findMany({
+        where: { userId, datetime: { gte: weekAgo, lte: now } },
+        include: { items: true }
+      }),
+      prisma.healthMetric.findMany({
+        where: { userId, date: { gte: weekAgo, lte: now } },
+        orderBy: { date: 'asc' }
+      }),
+      prisma.waterLog.findMany({
+        where: { userId, date: { gte: weekAgo, lte: now } }
+      }),
+    ]);
+
+    // Агрегация по дням
+    const dayMap = new Map();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekAgo);
+      d.setDate(d.getDate() + i);
+      dayMap.set(d.toISOString().split('T')[0], { cal: 0, prot: 0, fat: 0, carbs: 0, water: 0 });
+    }
+
+    for (const m of meals) {
+      const key = m.datetime.toISOString().split('T')[0];
+      if (dayMap.has(key)) {
+        const d = dayMap.get(key);
+        d.cal += m.totalCalories;
+        d.prot += m.totalProtein;
+        d.fat += m.totalFat;
+        d.carbs += m.totalCarbs;
+      }
+    }
+
+    for (const w of waterLogs) {
+      const key = w.date.toISOString().split('T')[0];
+      if (dayMap.has(key)) dayMap.get(key).water += w.amount;
+    }
+
+    const days = Array.from(dayMap.entries()).map(([date, data]) => ({ date, ...data }));
+    const avgCal = days.reduce((s, d) => s + d.cal, 0) / 7;
+    const avgProt = days.reduce((s, d) => s + d.prot, 0) / 7;
+    const avgFat = days.reduce((s, d) => s + d.fat, 0) / 7;
+    const avgCarbs = days.reduce((s, d) => s + d.carbs, 0) / 7;
+    const avgWater = days.reduce((s, d) => s + d.water, 0) / 7;
+
+    const firstWeight = healthMetrics.find(m => m.weight)?.weight || null;
+    const lastWeight = [...healthMetrics].reverse().find(m => m.weight)?.weight || null;
+    const weightChange = (firstWeight && lastWeight) ? (lastWeight - firstWeight).toFixed(1) : null;
+
+    const context = `Недельный отчёт (${weekAgo.toLocaleDateString('ru-RU')} — ${now.toLocaleDateString('ru-RU')}):\n\nПользователь: ${userData?.name || '—'}\n\nСредние показатели за неделю:\n- Калории: ${avgCal.toFixed(0)} ккал/день (цель: 1700-1820)\n- Белок: ${avgProt.toFixed(1)} г/день (цель: 160-178)\n- Жиры: ${avgFat.toFixed(1)} г/день (цель: 71-89)\n- Углеводы: ${avgCarbs.toFixed(1)} г/день (цель: 130-150)\n- Вода: ${avgWater.toFixed(0)} мл/день (цель: 2000)\n\nДинамика веса: ${weightChange ? `${firstWeight} → ${lastWeight} кг (${weightChange} кг)` : 'Недостаточно данных'}\n\nЗамеры здоровья за неделю:\n${healthMetrics.map(m => `- ${m.date.toISOString().split('T')[0]}: вес ${m.weight || '—'} кг, давление ${m.systolic || '—'}/${m.diastolic || '—'}, пульс ${m.pulse || '—'}`).join('\\n') || 'Нет замеров'}`;
+
+    const advice = await callDeepSeek([
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: `Проведи недельный анализ и дай рекомендации на следующую неделю. Данные:\n${context}` }
+    ]);
+
+    res.json({
+      days,
+      averages: { calories: +avgCal.toFixed(0), protein: +avgProt.toFixed(1), fat: +avgFat.toFixed(1), carbs: +avgCarbs.toFixed(1), water: +avgWater.toFixed(0) },
+      weight: { first: firstWeight, last: lastWeight, change: weightChange },
+      advice: advice || `Недельный обзор (офлайн):\\nСредние калории: ${avgCal.toFixed(0)} ккал. Белок: ${avgProt.toFixed(1)} г. Вода: ${avgWater.toFixed(0)} мл.`
+    });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
